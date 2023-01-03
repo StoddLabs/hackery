@@ -1,7 +1,8 @@
 use std::sync::mpsc::Sender;
 
-use serde::Serialize;
 use serde::Deserialize;
+use serde::Serialize;
+use serde_json::from_str;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Story {
@@ -28,23 +29,38 @@ async fn main() -> Result<(), reqwest::Error> {
     let (mut tx, mut rx) = tokio::sync::mpsc::channel::<Story>(channel_buffer as usize);
 
     //for i in 1..channel_buffer as i32 {
-    for i in 1..1000 as i32 {
-        if i == channel_buffer {
-            println!("hi mom")
+    let current = 0;
+    // tokio::spawn(async move {
+    //     for i in 1..1000 as i32 {
+
+    //         let curr_tx = tx.clone();
+    //         tokio::spawn(async move {
+    //             if let Some(ok) = get_story(i).await {
+    //                 //println!("{}", i);
+    //                 curr_tx.send(ok).await;
+    //             }
+    //         });
+    //     }
+    // });
+    tokio::spawn(async move {
+        for i in 1..channel_buffer as i32 {
+            let curr_tx = tx.clone();
+            let fut = tokio::spawn(async move {
+                if let Some(ok) = get_story(i).await {
+                    curr_tx.send(ok).await;
+                }
+            });
+            println!("{}", i);
+            if i % 500000 == 0 {
+                println!("awaiting");
+                fut.await;
+            }
         }
-        let curr_tx = tx.clone();
-        tokio::spawn(async move {
-           if let Some(ok) = get_story(i).await {
-            //println!("{}", i);
-            curr_tx.send(ok).await;
-           } 
-        });
+    });
+    while let Some(message) = rx.recv().await {
+        //println!("GOT = {:?}", message);
     }
 
-    while let Some(message) = rx.recv().await {
-        println!("GOT = {:?}", message);
-    }
-    
     Ok(())
 }
 
@@ -55,20 +71,27 @@ async fn get_max_item() -> Result<String, reqwest::Error> {
         .await
     {
         Ok(response) => {
-            println!("{}", response.trim());
-            Ok(response.trim().to_owned())},
+            //println!("{}", response.trim());
+            Ok(response.trim().to_owned())
+        }
         Err(e) => Err(e),
     }
 }
 async fn get_story(i: i32) -> Option<Story> {
     let search_type = "item";
-    let url = format!("https://hacker-news.firebaseio.com/v0/{}/{}.json?print=pretty", search_type, i);
+    let url = format!(
+        "https://hacker-news.firebaseio.com/v0/{}/{}.json?print=pretty",
+        search_type, i
+    );
     let response = reqwest::get(url).await;
-    let mut buff = String::from(response.unwrap().text().await.unwrap());
-    if let Ok(ok) = serde_json::from_str::<Story>(&buff) {
-        //println!("{:?}", ok);
-        Some(ok)
+    if let Ok(resp) = response {
+        let mut buff = String::from(resp.text().await.unwrap());
+        //Ok(from_str::<Story>(&buff))
+        match serde_json::from_str::<Story>(&buff) {
+            Ok(story) => Some(story),
+            Err(_) => None,
+        }
     } else {
-        None 
+        None
     }
 }
