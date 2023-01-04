@@ -19,46 +19,38 @@ struct Story {
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
-    let mut channel_buffer: i32 = 1;
+    let channel_buffer: i32;
     if let Ok(resp) = get_max_item().await {
         channel_buffer = resp.parse::<i32>().unwrap();
         println!("{}", resp);
     } else {
         panic!("wrong link")
     }
-    let (mut tx, mut rx) = tokio::sync::mpsc::channel::<Story>(channel_buffer as usize);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Story>(channel_buffer as usize);
 
-    //for i in 1..channel_buffer as i32 {
-    let current = 0;
-    // tokio::spawn(async move {
-    //     for i in 1..1000 as i32 {
-
-    //         let curr_tx = tx.clone();
-    //         tokio::spawn(async move {
-    //             if let Some(ok) = get_story(i).await {
-    //                 //println!("{}", i);
-    //                 curr_tx.send(ok).await;
-    //             }
-    //         });
-    //     }
-    // });
     tokio::spawn(async move {
+        //for i in 0..1000 as i32 {
         for i in 1..channel_buffer as i32 {
             let curr_tx = tx.clone();
             let fut = tokio::spawn(async move {
                 if let Some(ok) = get_story(i).await {
-                    curr_tx.send(ok).await;
+                    if let Err(_) = curr_tx.send(ok).await {
+                        format!("error sending {} through channel", i);
+                    };
                 }
             });
-            println!("{}", i);
-            if i % 500000 == 0 {
-                println!("awaiting");
-                fut.await;
+            //750000 because if I don't, I run out of memeory. This really should be done in batch,
+            //but this shouldn't be done *that* often, it's not really that big of a deal.
+            if i % 750000 == 0 {
+                //println!("awaiting");
+                if let Err(_) = fut.await {
+                    format!("error sending {} through channel", i);
+                };
             }
         }
     });
     while let Some(message) = rx.recv().await {
-        //println!("GOT = {:?}", message);
+        println!("GOT = {:?}", message);
     }
 
     Ok(())
