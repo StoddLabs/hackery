@@ -3,7 +3,11 @@ use std::sync::mpsc::Sender;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::from_str;
-
+use std::fmt;
+use std::fs::File;
+use std::io::Write;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 #[derive(Serialize, Deserialize, Debug)]
 struct Story {
     by: String,
@@ -17,6 +21,22 @@ struct Story {
     url: String,
 }
 
+impl fmt::Display for Story {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "({},{},{},{},{},{},{},{})",
+            self.by,
+            self.descendants,
+            self.id,
+            self.score,
+            self.time,
+            self.title,
+            self.r#type,
+            self.url
+        )
+    }
+}
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let channel_buffer: i32;
@@ -29,30 +49,35 @@ async fn main() -> Result<(), reqwest::Error> {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Story>(channel_buffer as usize);
 
     tokio::spawn(async move {
-        //for i in 0..1000 as i32 {
+        let semaphore = Arc::new(Semaphore::new(100));
+        let mut join_handles = Vec::new();
         for i in 1..channel_buffer as i32 {
+            //println!("{}", i);
             let curr_tx = tx.clone();
-            let fut = tokio::spawn(async move {
+            let permit = semaphore.clone().acquire_owned().await.unwrap();
+            join_handles.push(tokio::spawn(async move {
                 if let Some(ok) = get_story(i).await {
                     if let Err(_) = curr_tx.send(ok).await {
                         format!("error sending {} through channel", i);
                     };
                 }
-            });
-            //750000 because if I don't, I run out of memeory. This really should be done in batch,
-            //but this shouldn't be done *that* often, it's not really that big of a deal.
-            if i % 750000 == 0 {
-                //println!("awaiting");
-                if let Err(_) = fut.await {
-                    format!("error sending {} through channel", i);
-                };
-            }
+                drop(permit);
+            }));
+        }
+        for handle in join_handles {
+            handle.await.unwrap();
         }
     });
-    while let Some(message) = rx.recv().await {
-        println!("GOT = {:?}", message);
-    }
 
+    let mut file = File::create("foo.txt").unwrap();
+    while let Some(message) = rx.recv().await {
+        //println!("GOT = {:?}", message);
+        let mut to_write = message.to_string();
+        to_write.push_str("\n");
+        if let Err(_) = file.write_all(to_write.as_bytes()) {
+            format!("can't write to file :|");
+        }
+    }
     Ok(())
 }
 
@@ -77,7 +102,7 @@ async fn get_story(i: i32) -> Option<Story> {
     );
     let response = reqwest::get(url).await;
     if let Ok(resp) = response {
-        let mut buff = String::from(resp.text().await.unwrap());
+        let buff = String::from(resp.text().await.unwrap());
         //Ok(from_str::<Story>(&buff))
         match serde_json::from_str::<Story>(&buff) {
             Ok(story) => Some(story),
