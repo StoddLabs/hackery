@@ -23,6 +23,7 @@ struct Story {
 
 impl fmt::Display for Story {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        //this doesn't include the kids because you can't 
         write!(
             f,
             "({},{},{},{},{},{},{},{})",
@@ -51,7 +52,8 @@ async fn main() -> Result<(), reqwest::Error> {
     tokio::spawn(async move {
         let semaphore = Arc::new(Semaphore::new(100));
         let mut join_handles = Vec::new();
-        for i in 1..channel_buffer as i32 {
+        //for i in 1..channel_buffer as i32 {
+        for i in 1..1000 as i32 {
             //println!("{}", i);
             let curr_tx = tx.clone();
             let permit = semaphore.clone().acquire_owned().await.unwrap();
@@ -69,14 +71,15 @@ async fn main() -> Result<(), reqwest::Error> {
         }
     });
 
-    let mut file = File::create("foo.txt").unwrap();
+    //let mut file = File::create("foo.txt").unwrap();
     while let Some(message) = rx.recv().await {
+        println!("{:?}", message.to_string());
         //println!("GOT = {:?}", message);
-        let mut to_write = message.to_string();
-        to_write.push_str("\n");
-        if let Err(_) = file.write_all(to_write.as_bytes()) {
-            format!("can't write to file :|");
-        }
+        //let mut to_write = message.to_string();
+        //to_write.push_str("\n");
+        //if let Err(_) = file.write_all(to_write.as_bytes()) {
+            //format!("can't write to file :|");
+        //}
     }
     Ok(())
 }
