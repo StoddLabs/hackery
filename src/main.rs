@@ -71,15 +71,8 @@ async fn main() -> Result<(), reqwest::Error> {
         }
     });
 
-    //let mut file = File::create("foo.txt").unwrap();
     while let Some(message) = rx.recv().await {
         println!("{:?}", message.to_string());
-        //println!("GOT = {:?}", message);
-        //let mut to_write = message.to_string();
-        //to_write.push_str("\n");
-        //if let Err(_) = file.write_all(to_write.as_bytes()) {
-            //format!("can't write to file :|");
-        //}
     }
     Ok(())
 }
